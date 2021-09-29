@@ -17,7 +17,7 @@ use crate::types::{LightBlock, PeerId, Status};
 
 #[cfg(feature = "rpc-client")]
 use {
-    crate::components::clock::SystemClock, crate::components::io::ProdIo,
+    crate::components::clock::SystemClock, crate::components::io::RpcIo,
     crate::components::scheduler, crate::components::verifier::ProdVerifier,
     crate::operations::ProdHasher, crate::predicates::ProdPredicates, std::time::Duration,
     tendermint_rpc as rpc,
@@ -78,7 +78,7 @@ impl LightClientBuilder<NoTrustedState> {
             peer_id,
             options,
             light_store,
-            Box::new(ProdIo::new(peer_id, rpc_client, timeout)),
+            Box::new(RpcIo::new(peer_id, rpc_client, timeout)),
             Box::new(ProdHasher),
             Box::new(SystemClock),
             Box::new(ProdVerifier::default()),

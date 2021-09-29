@@ -3,11 +3,6 @@
 use flex_error::{define_error, TraceError};
 use std::time::Duration;
 
-#[cfg(feature = "rpc-client")]
-use tendermint_rpc::Client;
-
-use tendermint_rpc as rpc;
-
 use crate::types::{Height, LightBlock};
 
 #[cfg(feature = "tokio")]
@@ -38,7 +33,7 @@ define_error! {
     #[derive(Debug)]
     IoError {
         Rpc
-            [ rpc::Error ]
+            [ tendermint_rpc::Error ]
             | _ | { "rpc error" },
 
         InvalidHeight
@@ -91,10 +86,10 @@ where
 }
 
 #[cfg(feature = "rpc-client")]
-pub use self::prod::ProdIo;
+pub use self::rpc::RpcIo;
 
 #[cfg(feature = "rpc-client")]
-mod prod {
+mod rpc {
     use super::*;
 
     use std::time::Duration;
@@ -105,18 +100,18 @@ mod prod {
     use tendermint::account::Id as TMAccountId;
     use tendermint::block::signed_header::SignedHeader as TMSignedHeader;
     use tendermint::validator::Set as TMValidatorSet;
-    use tendermint_rpc::Paging;
+    use tendermint_rpc::{Client as _, Paging};
 
-    /// Production implementation of the Io component, which fetches
-    /// light blocks from full nodes via RPC.
+    /// Implementation of the Io component backed by an RPC client, which fetches
+    /// light blocks from full nodes.
     #[derive(Clone, Debug)]
-    pub struct ProdIo {
+    pub struct RpcIo {
         peer_id: PeerId,
-        rpc_client: rpc::HttpClient,
+        rpc_client: tendermint_rpc::HttpClient,
         timeout: Option<Duration>,
     }
 
-    impl Io for ProdIo {
+    impl Io for RpcIo {
         fn fetch_light_block(&self, height: AtHeight) -> Result<LightBlock, IoError> {
             let signed_header = self.fetch_signed_header(height)?;
             let height = signed_header.header.height;
@@ -136,14 +131,14 @@ mod prod {
         }
     }
 
-    impl ProdIo {
-        /// Constructs a new ProdIo component.
+    impl RpcIo {
+        /// Constructs a new RpcIo component.
         ///
         /// A peer map which maps peer IDS to their network address must be supplied.
         pub fn new(
             peer_id: PeerId,
-            rpc_client: rpc::HttpClient, /* TODO(thane): Generalize over client transport
-                                          * (instead of using HttpClient directly) */
+            rpc_client: tendermint_rpc::HttpClient, /* TODO(thane): Generalize over client transport
+                                                     * (instead of using HttpClient directly) */
             timeout: Option<Duration>,
         ) -> Self {
             Self {
