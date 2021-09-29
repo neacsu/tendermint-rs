@@ -7,13 +7,12 @@ use tendermint::abci::transaction::Hash;
 use tendermint_rpc as rpc;
 
 use crate::components::clock::Clock;
-use crate::components::io::{AtHeight, Io, IoError};
+use crate::components::io::{AsyncIo, AtHeight, IoError};
 use crate::components::verifier::{ProdVerifier, Verdict, Verifier};
 use crate::errors::Error;
 use crate::evidence::EvidenceReporter;
 use crate::light_client::{LightClient, Options};
 use crate::state::State;
-use contracts::contract_trait;
 use std::collections::HashMap;
 use std::time::Duration;
 use tendermint::block::Height as HeightStr;
@@ -104,8 +103,9 @@ impl MockIo {
     }
 }
 
-impl Io for MockIo {
-    fn fetch_light_block(&self, height: AtHeight) -> Result<LightBlock, IoError> {
+#[async_trait::async_trait]
+impl AsyncIo for MockIo {
+    async fn fetch_light_block(&self, height: AtHeight) -> Result<LightBlock, IoError> {
         let height = match height {
             AtHeight::Highest => self.latest_height,
             AtHeight::At(height) => height,
@@ -122,9 +122,9 @@ impl Io for MockIo {
 #[derive(Clone, Debug, Default)]
 pub struct MockEvidenceReporter;
 
-#[contract_trait]
+#[async_trait::async_trait]
 impl EvidenceReporter for MockEvidenceReporter {
-    fn report(&self, _e: Evidence, _peer: PeerId) -> Result<Hash, IoError> {
+    async fn report(&self, _e: Evidence, _peer: PeerId) -> Result<Hash, IoError> {
         Ok(Hash::new([0; 32]))
     }
 }
@@ -164,12 +164,13 @@ pub fn verify_single(
     }
 }
 
-pub fn verify_bisection(
+pub async fn verify_bisection(
     untrusted_height: Height,
     light_client: &mut LightClient,
     state: &mut State,
 ) -> Result<Vec<LightBlock>, Error> {
     light_client
         .verify_to_target(untrusted_height, state)
+        .await
         .map(|_| state.get_trace(untrusted_height))
 }
