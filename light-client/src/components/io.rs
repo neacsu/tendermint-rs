@@ -1,9 +1,11 @@
 //! Provides an interface and a default implementation of the `Io` component
 
-use flex_error::{define_error, TraceError};
 use std::time::Duration;
 
+use flex_error::{define_error, TraceError};
+
 use crate::types::{Height, LightBlock};
+use crate::utils::time::{timeout, TimeError};
 
 /// Type for selecting either a specific height or the latest one
 pub enum AtHeight {
@@ -39,12 +41,9 @@ define_error! {
             [ tendermint::Error ]
             | _ | { "fetched validator set is invalid" },
 
-        Timeout
-            { duration: Duration }
-            | e | {
-                format_args!("task timed out after {} ms",
-                    e.duration.as_millis())
-            },
+        Time
+            [ TimeError ]
+            | _ | { "time error" },
 
         Runtime
             [ TraceError<std::io::Error> ]
@@ -57,7 +56,7 @@ impl IoErrorDetail {
     /// Whether this error means that a timeout occured when querying a node.
     pub fn is_timeout(&self) -> Option<Duration> {
         match self {
-            Self::Timeout(e) => Some(e.duration),
+            Self::Time(e) => e.source.is_timeout(),
             _ => None,
         }
     }
@@ -86,6 +85,7 @@ pub use self::rpc::RpcIo;
 mod rpc {
     use std::time::Duration;
 
+    use futures::future::FutureExt;
     use tendermint::account::Id as TMAccountId;
     use tendermint::block::signed_header::SignedHeader as TMSignedHeader;
     use tendermint::validator::Set as TMValidatorSet;
@@ -101,7 +101,7 @@ mod rpc {
     pub struct RpcIo {
         peer_id: PeerId,
         rpc_client: tendermint_rpc::HttpClient,
-        timeout: Option<Duration>,
+        timeout: Duration,
     }
 
     #[async_trait::async_trait]
@@ -142,16 +142,19 @@ mod rpc {
             Self {
                 peer_id,
                 rpc_client,
-                timeout,
+                timeout: timeout.unwrap_or_else(|| Duration::from_secs(5)),
             }
         }
 
         async fn fetch_signed_header(&self, height: AtHeight) -> Result<TMSignedHeader, IoError> {
             let client = self.rpc_client.clone();
-            let res = match height {
-                AtHeight::Highest => client.latest_commit().await,
-                AtHeight::At(height) => client.commit(height).await,
+            let fetch_commit = match height {
+                AtHeight::Highest => client.latest_commit().fuse(),
+                AtHeight::At(height) => client.commit(height).fuse(),
             };
+            let res = timeout(self.timeout, fetch_commit)
+                .await
+                .map_err(IoError::time)?;
 
             match res {
                 Ok(response) => Ok(response.signed_header),
@@ -172,9 +175,9 @@ mod rpc {
             };
 
             let client = self.rpc_client.clone();
-            let response = client
-                .validators(height, Paging::All)
+            let response = timeout(self.timeout, client.validators(height, Paging::All).fuse())
                 .await
+                .map_err(IoError::time)?
                 .map_err(IoError::rpc)?;
 
             let validator_set = match proposer_address {
