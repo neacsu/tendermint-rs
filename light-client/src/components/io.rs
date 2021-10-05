@@ -2,10 +2,11 @@
 
 use std::time::Duration;
 
+use async_trait::async_trait;
 use flex_error::{define_error, TraceError};
 
 use crate::types::{Height, LightBlock};
-use crate::utils::time::{timeout, TimeError};
+use crate::utils::time::TimeError;
 
 /// Type for selecting either a specific height or the latest one
 pub enum AtHeight {
@@ -62,12 +63,12 @@ impl IoErrorDetail {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 pub trait AsyncIo: Send + Sync {
     async fn fetch_light_block(&self, height: AtHeight) -> Result<LightBlock, IoError>;
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl<F, R> AsyncIo for F
 where
     F: Fn(AtHeight) -> R + Send + Sync,
@@ -92,6 +93,7 @@ mod rpc {
     use tendermint_rpc::{Client as _, Paging};
 
     use crate::types::PeerId;
+    use crate::utils::time::timeout;
 
     use super::*;
 
@@ -104,7 +106,7 @@ mod rpc {
         timeout: Duration,
     }
 
-    #[async_trait::async_trait]
+    #[async_trait]
     impl AsyncIo for RpcIo {
         async fn fetch_light_block(&self, height: AtHeight) -> Result<LightBlock, IoError> {
             let signed_header = self.fetch_signed_header(height).await?;

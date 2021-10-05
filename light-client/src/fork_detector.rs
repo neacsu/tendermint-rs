@@ -1,5 +1,7 @@
 //! Fork detection data structures and implementation.
 
+use async_trait::async_trait;
+
 use crate::{
     errors::{Error, ErrorDetail, ErrorExt},
     operations::{Hasher, ProdHasher},
@@ -35,7 +37,7 @@ pub enum Fork {
 }
 
 /// Interface for a fork detector
-#[async_trait::async_trait]
+#[async_trait]
 pub trait ForkDetector: Send + Sync {
     /// Detect forks using the given verified block, trusted block,
     /// and list of witnesses to verify the given light block against.
@@ -76,7 +78,7 @@ impl Default for ProdForkDetector {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl ForkDetector for ProdForkDetector {
     /// Perform fork detection. See the documentation `ProdForkDetector` for details.
     async fn detect_forks(
