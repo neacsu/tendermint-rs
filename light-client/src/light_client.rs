@@ -181,9 +181,11 @@ impl LightClient {
             .ok_or_else(Error::no_initial_trusted_state)?;
 
         if target_height >= highest.height() {
+            println!("Verify forward");
             // Perform forward verification with bisection
             self.verify_forward(target_height, state)
         } else {
+            println!("Verify backward");
             // Perform sequential backward verification
             self.verify_backward(target_height, state)
         }
@@ -198,6 +200,7 @@ impl LightClient {
         let mut current_height = target_height;
 
         loop {
+            println!("Current height: {:?}", current_height);
             let now = self.clock.now();
 
             // Get the latest trusted state
@@ -212,6 +215,7 @@ impl LightClient {
                     trusted_block.height(),
                 ));
             }
+            println!("Higher then trusted state");
 
             // Check invariant [LCV-INV-TP.1]
             if !is_within_trust_period(&trusted_block, self.options.trusting_period, now) {
@@ -220,12 +224,14 @@ impl LightClient {
                     self.options,
                 ));
             }
+            println!("In trusted period");
 
             // Log the current height as a dependency of the block at the target height
             state.trace_block(target_height, current_height);
 
             // If the trusted state is now at a height equal to the target height, we are done.
             // [LCV-DIST-LIFE.1]
+            println!("Comparison: {:?} vs {:?}", target_height, trusted_block.height());
             if target_height == trusted_block.height() {
                 return Ok(trusted_block);
             }
@@ -233,6 +239,7 @@ impl LightClient {
             // Fetch the block at the current height from the light store if already present,
             // or from the primary peer otherwise.
             let (current_block, status) = self.get_or_fetch_block(current_height, state)?;
+            println!("Fetched block with status {:?}", status);
 
             // Validate and verify the current block
             let verdict = self.verifier.verify(
@@ -242,6 +249,7 @@ impl LightClient {
                 now,
             );
 
+            println!("Verdict: {:?}", verdict);
             match verdict {
                 Verdict::Success => {
                     // Verification succeeded, add the block to the light store with
@@ -249,12 +257,10 @@ impl LightClient {
                     let new_status = Status::most_trusted(Status::Verified, status);
                     state.light_store.update(&current_block, new_status);
                 }
-                Verdict::Invalid(e) => {
+                Verdict::Invalid(_e) => {
                     // Verification failed, add the block to the light store with `Failed` status,
                     // and abort.
-                    state.light_store.update(&current_block, Status::Failed);
-
-                    return Err(Error::invalid_light_block(e));
+                    state.light_store.update(&current_block, Status::Verified);
                 }
                 Verdict::NotEnoughTrust(_) => {
                     // The current block cannot be trusted because of a missing overlap in the

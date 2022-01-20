@@ -118,13 +118,17 @@ mod prod {
 
     impl Io for ProdIo {
         fn fetch_light_block(&self, height: AtHeight) -> Result<LightBlock, IoError> {
+            println!("Getting light block");
             let signed_header = self.fetch_signed_header(height)?;
             let height = signed_header.header.height;
             let proposer_address = signed_header.header.proposer_address;
 
+            println!("Getting validator set");
             let validator_set = self.fetch_validator_set(height.into(), Some(proposer_address))?;
-            let next_validator_set = self.fetch_validator_set(height.increment().into(), None)?;
+            println!("Getting next light block");
+            let next_validator_set = self.fetch_validator_set(height.into(), None)?;
 
+            println!("Building block");
             let light_block = LightBlock::new(
                 signed_header,
                 validator_set,
